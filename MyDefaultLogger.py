@@ -9,14 +9,17 @@ import logging
 import sys
 import os
 
+LOG_LEVEL = "DEBUG"
+LOG_FILE = "log_proxy_rotator.txt"
+
 
 class MyDefaultLogger(logging.Logger):
-    def __init__(self, name, level, log_file_name):
+    def __init__(self, name, level=LOG_LEVEL, log_file_name=LOG_FILE):
         super().__init__(self)
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
         stream_handler = logging.StreamHandler(sys.stdout)
-        file_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), log_file_name))
+        file_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), log_file_name), encoding="utf-8")
 
         formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(module)s %(funcName)s [%(message)s]')
         stream_handler.setFormatter(formatter)
