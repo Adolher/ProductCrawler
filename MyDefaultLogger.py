@@ -21,7 +21,8 @@ class MyDefaultLogger(logging.Logger):
         stream_handler = logging.StreamHandler(sys.stdout)
         file_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), log_file_name), encoding="utf-8")
 
-        formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(module)s %(funcName)s [%(message)s]')
+        format_string = "[{0}] {1:20} {2} {3} [{4}]".format('%(asctime)s', '%(levelname)s', '%(module)s', '%(funcName)s', '%(message)s')
+        formatter = logging.Formatter(format_string)      #'[%(asctime)s] %(levelname)s %(module)s %(funcName)s [%(message)s]')      # format the output -> levelname
         stream_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
 

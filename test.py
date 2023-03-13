@@ -1,6 +1,5 @@
 c = True
-text = "adsd"
 
-x = text if c else None
+x = not c
 
 print(x)
