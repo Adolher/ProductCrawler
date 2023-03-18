@@ -1,0 +1,83 @@
+{
+    "dev_logger": {
+        "version": 1,
+        "disable_existing_loggers": true,
+        "formatters": {
+            "std_out_formatter": {
+                "class": "logging.Formatter",
+                "format": "%(levelname)-8s%(message)s"
+            },
+            "std_err_formatter": {
+                "class": "logging.Formatter",
+                "format": "%(levelname)-8s at %(processName)s %(threadName)s in %(name)s.%(module)s.%(funcName)s line %(lineno)d %(message)s"
+            },
+            "debug_verbose_formatter": {
+                "class": "logging.Formatter",
+                "format": "%(levelname)-8s at %(processName)s %(threadName)s in %(name)s.%(module)s.%(funcName)s line %(lineno)d -> %(message)s",
+                "style": "%"
+            },
+            "debug_one_line_formatter": {
+                "class": "logging.Formatter",
+                "format": "%(asctime)s %(levelname)-8s at %(processName)s %(threadName)s in %(name)s.%(module)s.%(funcName)s line %(lineno)d",
+                "style": "%"
+            }
+        },
+        "handlers": {
+            "std_out_handler": {
+                "level": "INFO",
+                "class": "logging.StreamHandler",
+                "formatter": "std_out_formatter",
+                "stream": "ext://sys.stdout",
+                "filters": ["std_out_filter"]
+            },
+            "std_err_handler": {
+                "level": "ERROR",
+                "class": "logging.StreamHandler",
+                "formatter": "std_err_formatter",
+                "stream": "ext://sys.stderr",
+                "filters": ["std_err_filter"]
+            },
+            "debug_verbose_handler": {
+                "level": "DEBUG",
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "debug_verbose_formatter",
+                "filename": "logs/debug_verbose.log",
+                "mode": "w",
+                "encoding": "utf-8",
+                "maxBytes": 5242880,
+                "backupCount": 3
+            },
+            "debug_one_line_handler": {
+                "level": "DEBUG",
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "debug_one_line_formatter",
+                "filename": "logs/debug_one_line.log",
+                "mode": "w",
+                "maxBytes": 5242880,
+                "backupCount": 3
+            }
+        },
+        "filters": {
+            "std_out_filter": {
+                "()": "source.DefaultLogger.std_out_filter",
+                "level": "WARNING"
+            },
+            "std_err_filter": {
+                "()": "source.DefaultLogger.std_err_filter",
+                "level": "ERROR"
+            }
+        },
+        "loggers": {
+            "root": {
+                "handlers": [
+                    "std_out_handler",
+                    "std_err_handler",
+                    "debug_verbose_handler",
+                    "debug_one_line_handler"
+                ],
+                "level": "DEBUG",
+                "propagate": true
+            }
+        }
+    }
+}

@@ -1,0 +1,23 @@
+
+DEBUG   ************************************************************************************************************************************************************************************************
+**********************************************************************************************   A.add   ***********************************************************************************************
+2023-03-17 12:16:55.319152   ***************************************************************************************************************************************************************************
+
+calling depth -> 2
+calling stack -> ['debug_wrapper >> ', '<module> >> ', 'add']
+
+ -> arguments: {'self': <__main__.A object at 0x000001C368BB5F30>, 'x': 7, 'y': 4}
+
+INFO     at MainProcess MainThread in __main__.test.add line 15 -> 7 + 4 = 11
+WARNING  at MainProcess MainThread in __main__.test.add line 16 -> [<StreamHandler <stdout> (INFO)>, <StreamHandler <stderr> (ERROR)>, <RotatingFileHandler H:\GitHub\ProductCrawler\logs\debug_verbose.log (DEBUG)>, <RotatingFileHandler H:\GitHub\ProductCrawler\logs\debug_one_line.log (DEBUG)>]
+
+elapsed time: 0:00:00.001513
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^   return 11   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
+INFO     at MainProcess MainThread in __main__.test.mess line 20 -> Hallo
