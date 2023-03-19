@@ -1,5 +1,3 @@
-__pycache__
 .vscode
-.idea
-test.py
-*.log
+**/__pycache__
+**/test.py
