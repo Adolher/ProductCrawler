@@ -5,14 +5,16 @@ Created on Sat Mar 11 07:37:28 2023
 @author: jpw
 """
 
-import inspect
 import json
+import inspect
 import logging
 import logging.config
 from datetime import datetime
 
 CONFIG_FILE = "source/config/log_config.json"
 
+# ToDo: #10 create a class wrapper to log class.__init__()
+# ToDo: #11 set Docstrings
 
 class DebugVerboseAdapter(logging.LoggerAdapter):
     def __init__(self, logger, extra):
@@ -22,13 +24,13 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
         self.native_formatter = self.logger.root.handlers[self.handler_index].formatter
         self.levelname = logging.getLevelName(self.logger.getEffectiveLevel())
 
-    def __get_verbose_msg(self, position, msg):
+    def __get_verbose_msg(self, position):
         if position == "start":
-            start_v_msg = f"\n%s\n%s\n%s\n\ncalling depth -> %s\ncalling stack -> %s\n\n -> arguments: %s\n%s" % (
+            start_v_msg = f"\n%s\n%s\n%s\n\ncalling depth -> %s\ncalling stack -> %s\n\n -> arguments: %s\n" % (
                 self.levelname.ljust(len(self.levelname) + 3, ' ').ljust(200, '*'),
                 str(self.extra['qname']).center(len(str(self.extra['qname'])) + 6, ' ').center(200, '*'),
                 str(self.extra["time"]).ljust(len(str(self.extra["time"])) + 3, ' ').ljust(200, '*'),
-                self.extra["calling_depth"], self.extra["way"], self.extra["arguments"], msg
+                self.extra["calling_depth"], self.extra["way"], self.extra["arguments"],
             )
             return start_v_msg
         elif position == "end":
@@ -42,7 +44,7 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
         self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
 
     def process(self, msg, kwargs):
-        return self.__get_verbose_msg(self.extra['position'], msg), kwargs
+        return self.__get_verbose_msg(self.extra['position']), kwargs
 
 
 def initialize_logger():
@@ -52,16 +54,16 @@ def initialize_logger():
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as cf:
             config = json.load(cf)
-            logging.config.dictConfig(config["dev_logger"])
+            logging.config.dictConfig(config["dev_logger"])     # ToDo: #19 work on formats -> in all Formatters the same informations but in diffrent format
     except FileNotFoundError as e:
         log.error(e)
     return log
 
 
-def debug_verbose(func):
+def debug_verbose(func):    # ToDo: #12 set wrapper-function debug_verbose() as staticmethod of class DebugVerboseAdapter
     sig = inspect.signature(func)
 
-    def debug_wrapper(self, *args, **kwargs):
+    def debug_wrapper(self, *args, **kwargs):   # ToDo: #18 make debug_wrapper thread save
 
         bound = sig.bind(self, *args, **kwargs)
         bound.apply_defaults()

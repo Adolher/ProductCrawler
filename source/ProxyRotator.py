@@ -14,15 +14,7 @@ from requests.exceptions import RequestException, ProxyError, ConnectionError, T
 
 
 class ProxyRotator:
-    def __init__(self,
-                 num_threads=50,
-                 start_timeout=4,
-                 max_timeout=32,
-                 proxies_file="proxies.txt",
-                 valid_proxies_file="valid_proxies.txt",
-                 accepted_bad_proxy_quote=0.5,
-                 min_valid_proxies=20):
-
+    def __init__(self, num_threads=50, start_timeout=4, max_timeout=32, proxies_file="proxies.txt", valid_proxies_file="valid_proxies.txt", accepted_bad_proxy_quote=0.5, min_valid_proxies=20):
         self.logger = logging.getLogger(__name__)
         self.__unchecked_proxies = queue.Queue()
         self.__valid_proxies = []
@@ -37,14 +29,13 @@ class ProxyRotator:
         self.__valid_proxies_file = valid_proxies_file
 
         self.__urls = [
-            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-            # https://docs.proxyscrape.com/
+            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",     # https://docs.proxyscrape.com/
             "https://free-proxy-list.net/"]
 
         if not self.__read_valid_proxies():
             self.__get_proxies()
 
-    @debug_verbose
+    @debug_verbose  # ToDo: #13 use wrapper with conditions?
     def __get_proxies(self, under_min=False) -> None:  # done
         try:
             if under_min:
@@ -145,15 +136,14 @@ class ProxyRotator:
         if index != 0:
             proxies = {"http": self.__valid_proxies[index], "https": self.__valid_proxies[index]}
         elif proxy:
-            index += self.__request_counter % len(self.__valid_proxies) - 1
+            index += self.__request_counter % (len(self.__valid_proxies) - 1)
             proxies = {"http": self.__valid_proxies[index], "https": self.__valid_proxies[index]}
         else:
             proxies = None
 
         try:
             if proxy:
-                self.logger.info(
-                    "request via proxy {0:25s} to {1} timeout={2:2d}".format(str(proxies), url, timeout))
+                self.logger.info("request via proxy {0:25s} to {1} timeout={2:2d}".format(str(proxies), url, timeout))
             self.__request_counter += 1
             response = requests.get(url,
                                     proxies=proxies,
@@ -182,7 +172,7 @@ class ProxyRotator:
     def __get_sites(self, own_ip=False) -> list:
         if own_ip:
             self.logger.warning("!!!WARNING!!! REQUEST WITH YOUR OWN IP !!!WARNING!!!")
-            # write a describing message
+            # ToDo: #16 write a describing message
             confirm = False if input("Do you agree with it? ( y / [n] )") != "y" else True
             if not confirm:
                 exit()
@@ -196,12 +186,12 @@ class ProxyRotator:
             elif "free-proxy-list.net" in url:
                 response = self.rotating_requests(url, proxy=not own_ip)
                 proxies.extend(self.__free_proxy_list(response.text))
-            # clean proxies from duplicates
+            # ToDo: #17 clean proxies from duplicates
             self.logger.info("Request successful")
 
         return proxies
 
-    # def __free_proxy_list(self, html):
+    # def __free_proxy_list(self, html):    # ToDo: #15 finish this method
     #     proxies_fpl = []
     #     soup = BeautifulSoup(html, "html.parser")
     #     x = soup.find("textarea")
@@ -209,7 +199,7 @@ class ProxyRotator:
 
     def __proxyscrape(self, text):
         self.__proxy_list = text.split("\r\n")
-        with open("../proxies.txt", "w") as f:
+        with open("../proxies.txt", "w") as f:  # ToDo: #14 exception handling!!!
             for proxy in self.__proxy_list:
                 self.logger.info("Get {0}".format(proxy))
                 f.write(proxy + "\n")
