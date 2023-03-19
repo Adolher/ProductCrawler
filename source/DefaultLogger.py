@@ -15,6 +15,7 @@ CONFIG_FILE = "source/config/log_config.json"
 
 # ToDo: #10 create a class wrapper to log class.__init__()
 # ToDo: #11 set Docstrings
+# ToDo: #23 change RotatingFileHandler to TimedRotatingFileHandler
 
 class DebugVerboseAdapter(logging.LoggerAdapter):
     def __init__(self, logger, extra):

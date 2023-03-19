@@ -12,6 +12,7 @@ from source.DefaultLogger import debug_verbose
 from requests.exceptions import RequestException, ProxyError, ConnectionError, Timeout, ContentDecodingError, \
     TooManyRedirects
 
+# ToDo: #22 set docstrings
 
 class ProxyRotator:
     def __init__(self, num_threads=50, start_timeout=4, max_timeout=32, proxies_file="proxies.txt", valid_proxies_file="valid_proxies.txt", accepted_bad_proxy_quote=0.5, min_valid_proxies=20):
@@ -46,8 +47,9 @@ class ProxyRotator:
                 with open(self.__proxies_file, "r") as f:
                     proxies = f.read().split("\n")
         except FileNotFoundError:
-            self.logger.warning("{0} does not exists! Fetch proxy lists from internet.")
+            self.logger.warning(f"{0} does not exists! Fetch proxy lists from internet.".format(self.__proxies_file))
             proxies = self.__get_sites(own_ip=True)
+            # ToDo: #20 save proxies in file
 
         self.logger.info(f"get {len(proxies)} proxies")
         for i in range(len(proxies) - 1):
@@ -197,9 +199,9 @@ class ProxyRotator:
     #     x = soup.find("textarea")
     #     return proxies_fpl
 
-    def __proxyscrape(self, text):
+    def __proxyscrape(self, text) -> requests.Response:     # ToDo: finish this method
         self.__proxy_list = text.split("\r\n")
-        with open("../proxies.txt", "w") as f:  # ToDo: #14 exception handling!!!
+        with open("proxies.txt", "w") as f:  # ToDo: #14 exception handling!!!
             for proxy in self.__proxy_list:
                 self.logger.info("Get {0}".format(proxy))
                 f.write(proxy + "\n")
