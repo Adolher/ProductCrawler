@@ -17,8 +17,9 @@ CONFIG_FILE = "source/config/log_config.json"
 class DebugVerboseAdapter(logging.LoggerAdapter):
     def __init__(self, logger, extra):
         super().__init__(logger, extra)
+        self.handler_index = [ i for i in range(len(self.logger.root.handlers)) if self.logger.root.handlers[i].name == "debug_verbose_handler"][0]
         self.temp_formatter = logging.Formatter("%(message)s")
-        self.native_formatter = logging.Formatter("%(levelname)-8s at %(processName)s %(threadName)s in %(name)s.%(module)s.%(funcName)s line %(lineno)d -> %(message)s")
+        self.native_formatter = self.logger.root.handlers[self.handler_index].formatter
         self.levelname = logging.getLevelName(self.logger.getEffectiveLevel())
 
     def __get_verbose_msg(self, position, msg):
@@ -36,9 +37,9 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
             return end_v_message
 
     def send_log(self):
-        self.logger.root.handlers[2].setFormatter(self.temp_formatter)
+        self.logger.root.handlers[self.handler_index].setFormatter(self.temp_formatter)
         self.debug("")
-        self.logger.root.handlers[2].setFormatter(self.native_formatter)
+        self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
 
     def process(self, msg, kwargs):
         return self.__get_verbose_msg(self.extra['position'], msg), kwargs
@@ -65,7 +66,7 @@ def debug_verbose(func):
         bound = sig.bind(self, *args, **kwargs)
         bound.apply_defaults()
         calling_depth = len(inspect.getouterframes(inspect.currentframe()))
-        recurs_stack = inspect.getouterframes(inspect.currentframe())
+        recurs_stack = inspect.getouterframes(inspect.currentframe())   # ToDo: #8 try to replace '<module>' with module_name
         way = [f"{rs[3]} >> " for rs in recurs_stack]
         way.append(f"{func.__name__}")
 
