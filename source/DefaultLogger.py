@@ -17,6 +17,37 @@ CONFIG_FILE = "source/config/log_config.json"
 # ToDo: #11 set Docstrings
 # ToDo: #23 change RotatingFileHandler to TimedRotatingFileHandler
 
+
+def initialize_logger():
+    logging.basicConfig()
+    log = logging.getLogger()
+
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as cf:
+            config = json.load(cf)
+            logging.config.dictConfig(config["dev_logger"])     # ToDo: #19 work on formats -> in all Formatters the same informations but in diffrent format
+    except FileNotFoundError as e:
+        log.error(e)
+    return log
+
+def std_out_filter(level):
+    level = getattr(logging, level)
+
+    def filter(record):
+        return record.levelno <= level
+
+    return filter
+
+
+def std_err_filter(level):
+    level = getattr(logging, level)
+
+    def filter(record):
+        return record.levelno >= level
+
+    return filter
+
+
 class DebugVerboseAdapter(logging.LoggerAdapter):
     def __init__(self, logger, extra):
         super().__init__(logger, extra)
@@ -46,19 +77,6 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
 
     def process(self, msg, kwargs):
         return self.__get_verbose_msg(self.extra['position']), kwargs
-
-
-def initialize_logger():
-    logging.basicConfig()
-    log = logging.getLogger()
-
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as cf:
-            config = json.load(cf)
-            logging.config.dictConfig(config["dev_logger"])     # ToDo: #19 work on formats -> in all Formatters the same informations but in diffrent format
-    except FileNotFoundError as e:
-        log.error(e)
-    return log
 
 
 def debug_verbose(func):    # ToDo: #12 set wrapper-function debug_verbose() as staticmethod of class DebugVerboseAdapter
@@ -93,21 +111,3 @@ def debug_verbose(func):    # ToDo: #12 set wrapper-function debug_verbose() as 
         return return_val
 
     return debug_wrapper
-
-
-def std_out_filter(level):
-    level = getattr(logging, level)
-
-    def filter(record):
-        return record.levelno <= level
-
-    return filter
-
-
-def std_err_filter(level):
-    level = getattr(logging, level)
-
-    def filter(record):
-        return record.levelno >= level
-
-    return filter
