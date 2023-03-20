@@ -12,10 +12,18 @@ from source.DefaultLogger import debug_verbose
 from requests.exceptions import RequestException, ProxyError, ConnectionError, Timeout, ContentDecodingError, \
     TooManyRedirects
 
+NUM_THREADS = 1
+START_TIMEOUT = (3,2)
+MAX_TIMEOUT = 32
+ACCEPTED_BAD_PROXY_QUOTE = 0.5
+MIN_VALID_PROXIES = 1
+PROXIES_FILE = "proxies.txt"
+VALID_PROXIES_FILE = "valid_proxies.txt"
+
 # ToDo: #22 set docstrings
 
 class ProxyRotator:
-    def __init__(self, num_threads=50, start_timeout=4, max_timeout=32, proxies_file="proxies.txt", valid_proxies_file="valid_proxies.txt", accepted_bad_proxy_quote=0.5, min_valid_proxies=20):
+    def __init__(self, num_threads=NUM_THREADS, start_timeout=START_TIMEOUT, max_timeout=MAX_TIMEOUT, proxies_file=PROXIES_FILE, valid_proxies_file=VALID_PROXIES_FILE, accepted_bad_proxy_quote=ACCEPTED_BAD_PROXY_QUOTE, min_valid_proxies=MIN_VALID_PROXIES):
         self.logger = logging.getLogger(__name__)
         self.__unchecked_proxies = queue.Queue()
         self.__valid_proxies = []
@@ -68,7 +76,7 @@ class ProxyRotator:
                                                  "https": proxy},
                                         headers={
                                             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36'},
-                                        timeout=timeout
+                                        timeout=timeout[0]
                                         )
                 if response.status_code == requests.codes.ok and response.text is not None:
                     text = response.json()
@@ -80,8 +88,8 @@ class ProxyRotator:
                 self.logger.error("      {0:25s} ProxyError".format(proxy))
             except Timeout:
                 self.logger.error("      {0:25s} Timeout (timeout={1})".format(proxy, timeout))
-                if timeout < self.__max_timeout:
-                    self.__validate_proxies(timeout=(timeout * 2))
+                if timeout[0] < self.__max_timeout:
+                    self.__validate_proxies(timeout=(timeout[0] + timeout[1],(timeout[0])))
             except ConnectionError:
                 self.logger.error("      {0:25s} ConnectionError".format(proxy))
             except RequestException as e:
@@ -145,19 +153,19 @@ class ProxyRotator:
 
         try:
             if proxy:
-                self.logger.info("request via proxy {0:25s} to {1} timeout={2:2d}".format(str(proxies), url, timeout))
+                self.logger.info("request via proxy {0:25s} to {1} timeout={2:2d}".format(str(proxies["http"]), url, timeout[0]))
             self.__request_counter += 1
             response = requests.get(url,
                                     proxies=proxies,
                                     headers={
                                         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36'},
-                                    timeout=timeout
+                                    timeout=timeout[0]
                                     )
             return response
         except Timeout:
-            self.logger.error("proxy {0:25s} Timeout (timeout={1})".format(self.__valid_proxies[index], timeout))
-            if timeout < self.__max_timeout:
-                return self.rotating_requests(url, timeout + 3, proxy, index)
+            self.logger.error("proxy {0:25s} Timeout (timeout={1})".format(self.__valid_proxies[index], timeout[0]))
+            if timeout[0] < self.__max_timeout:
+                return self.rotating_requests(url, proxy, index, timeout=(timeout[0]+timeout[1],timeout[0]))
             else:
                 return self.rotating_requests(url, timeout, proxy)
         except ContentDecodingError:
