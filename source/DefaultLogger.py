@@ -5,6 +5,7 @@ Created on Sat Mar 11 07:37:28 2023
 @author: jpw
 """
 
+import os
 import json
 import inspect
 import logging
@@ -52,60 +53,60 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
     def __init__(self, logger, extra):
         super().__init__(logger, extra)
         self.handler_index = [ i for i in range(len(self.logger.root.handlers)) if self.logger.root.handlers[i].name == "debug_verbose_handler"][0]
-        self.temp_formatter = logging.Formatter("%(message)s")
         self.native_formatter = self.logger.root.handlers[self.handler_index].formatter
-        self.levelname = logging.getLevelName(self.logger.getEffectiveLevel())
 
-    def __get_verbose_msg(self, position):
-        if position == "start":
-            start_v_msg = f"\n%s\n%s\n%s\n\ncalling depth -> %s\ncalling stack -> %s\n\n -> arguments: %s\n" % (
-                self.levelname.ljust(len(self.levelname) + 3, ' ').ljust(200, '*'),
-                str(self.extra['qname']).center(len(str(self.extra['qname'])) + 6, ' ').center(200, '*'),
-                str(self.extra["time"]).ljust(len(str(self.extra["time"])) + 3, ' ').ljust(200, '*'),
-                self.extra["calling_depth"], self.extra["way"], self.extra["arguments"],
-            )
-            return start_v_msg
-        elif position == "end":
-            end_v_message = f"\nelapsed time: {self.extra['elapsed']}\n" \
-              f"{('return ' + str(self.extra['return_val'])).center(len('return ' + str(self.extra['return_val'])) + 6).center(200, '^')}\n{200 * '^'}\n"
-            return end_v_message
+        if extra["position"] == "start":
+            fmt = "\n{asctime: <24}{levelname: <8}{placeholder:*<168}\n{module_class_function}\n{placeholder:*^200}\n{processName} {threadName}\n\ncalling depth: {calling_depth}\ncalling stack: {way}\n\n-> arguments: {arguments}\n"
+            self.temp_formatter = logging.Formatter(fmt, style="{")
+        elif extra["position"] == "end":
+            self.extra["return_val"] = ('return ' + str(self.extra['return_val'])).center(len('return ' + str(self.extra['return_val'])) + 6).center(200, '^')
+            fmt = "\nelapsed time: {elapsed}\n{return_val}\n{placeholder:^^200}\n"
+            self.temp_formatter = logging.Formatter(fmt, style="{")
 
     def send_log(self):
         self.logger.root.handlers[self.handler_index].setFormatter(self.temp_formatter)
         self.debug("")
         self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
 
-    def process(self, msg, kwargs):
-        return self.__get_verbose_msg(self.extra['position']), kwargs
 
-
-def debug_verbose(func):    # ToDo: #12 set wrapper-function debug_verbose() as staticmethod of class DebugVerboseAdapter
+def debug_verbose(func):
     sig = inspect.signature(func)
 
     def debug_wrapper(self, *args, **kwargs):   # ToDo: #18 make debug_wrapper thread save
 
         bound = sig.bind(self, *args, **kwargs)
         bound.apply_defaults()
-        calling_depth = len(inspect.getouterframes(inspect.currentframe()))
-        recurs_stack = inspect.getouterframes(inspect.currentframe())   # ToDo: #8 try to replace '<module>' with module_name
-        way = [f"{rs[3]} >> " for rs in recurs_stack]
-        way.append(f"{func.__name__}")
+        
+        recurs_stack = inspect.getouterframes(inspect.currentframe())  # ToDo: #8 try to replace '<module>' with module_name
+        recurs_stack.reverse()
+        calling_depth = len(recurs_stack)
 
-        extra = {"position": "start", "qname": func.__qualname__, "time": str(datetime.now()),
-                 "calling_depth": calling_depth, "way": way, "arguments": bound.arguments}
+        way = ""
+        for rs in recurs_stack:
+            if "debug" in rs[3] or rs == recurs_stack[-1]:
+                calling_depth -= 1
+                continue
+            else:
+                way += f"in {rs[3]} [line: {rs[2]}] -> {rs[4][0].strip()} >>> "
+        way = way[:-5] if way.endswith(">>> ") else way
+
+        module_name = inspect.getmodule(func).__name__
+        qname = func.__qualname__
+        module_class_function = (module_name + "." + qname).center(len(str(module_name + "." + qname)) + 6, ' ').center(200, '*')
+
+        extra = {"position": "start", "module_class_function": module_class_function, "line": 42,
+                 "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
 
         adapt_logger = DebugVerboseAdapter(self.logger, extra)
-
         adapt_logger.send_log()
 
         start = datetime.now()
         return_val = func(self, *args, **kwargs)
         end = datetime.now()
 
-        extra["return_val"] = return_val
-        extra["elapsed"] = end - start
-        extra["position"] = "end"
+        extra = {"position":"end", "return_val":return_val, "elapsed":end - start, "placeholder": ""}
 
+        adapt_logger = DebugVerboseAdapter(self.logger, extra)
         adapt_logger.send_log()
 
         return return_val
