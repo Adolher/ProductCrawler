@@ -63,9 +63,9 @@ class DebugVerboseAdapter(logging.LoggerAdapter):
             fmt = "\nelapsed time: {elapsed}\n{return_val}\n{placeholder:^^200}\n"
             self.temp_formatter = logging.Formatter(fmt, style="{")
 
-    def send_log(self):
+    def send_log(self, msg):
         self.logger.root.handlers[self.handler_index].setFormatter(self.temp_formatter)
-        self.debug("")
+        self.debug(msg)
         self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
 
 
@@ -98,7 +98,7 @@ def debug_verbose(func):
                  "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
 
         adapt_logger = DebugVerboseAdapter(self.logger, extra)
-        adapt_logger.send_log()
+        adapt_logger.send_log(f"arguments: {bound.arguments}")
 
         start = datetime.now()
         return_val = func(self, *args, **kwargs)
@@ -107,7 +107,7 @@ def debug_verbose(func):
         extra = {"position":"end", "return_val":return_val, "elapsed":end - start, "placeholder": ""}
 
         adapt_logger = DebugVerboseAdapter(self.logger, extra)
-        adapt_logger.send_log()
+        adapt_logger.send_log(f"return {return_val}")
 
         return return_val
 

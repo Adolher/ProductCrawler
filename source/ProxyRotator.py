@@ -13,22 +13,26 @@ from requests.exceptions import RequestException, ProxyError, ConnectionError, T
     TooManyRedirects
 
 NUM_THREADS = 1
-START_TIMEOUT = (3,2)
-MAX_TIMEOUT = 32
+START_TIMEOUT = (1,1)
+MAX_TIMEOUT = 2
 ACCEPTED_BAD_PROXY_QUOTE = 0.5
-MIN_VALID_PROXIES = 1
+MIN_VALID_PROXIES = 20
 PROXIES_FILE = "proxies.txt"
 VALID_PROXIES_FILE = "valid_proxies.txt"
 
 # ToDo: #22 set docstrings
+# ToDo: #26 create an API to configure the const values
+# ToDo: #27 read and save const values from/ to .ini
+
 
 class ProxyRotator:
     def __init__(self, num_threads=NUM_THREADS, start_timeout=START_TIMEOUT, max_timeout=MAX_TIMEOUT, proxies_file=PROXIES_FILE, valid_proxies_file=VALID_PROXIES_FILE, accepted_bad_proxy_quote=ACCEPTED_BAD_PROXY_QUOTE, min_valid_proxies=MIN_VALID_PROXIES):
         self.logger = logging.getLogger(__name__)
         self.__unchecked_proxies = queue.Queue()
         self.__valid_proxies = []
+        self.__valid_proxies_index = 0
         self.__bad_valid_proxies = 0
-        self.__request_counter = 1
+        self.__request_counter = 0
         self.__min_valid_proxies = min_valid_proxies
         self.__accepted_bad_proxy_quote = accepted_bad_proxy_quote
         self.__threads = num_threads
@@ -49,7 +53,13 @@ class ProxyRotator:
         try:
             if under_min:
                 self.logger.info("Fetch new proxy lists from internet.")
+                old_min_valid_proxies = self.__min_valid_proxies
+                old_accepted_bad_proxy_quote = self.__accepted_bad_proxy_quote
+                self.__min_valid_proxies = 0
+                self.__accepted_bad_proxy_quote = 1
                 proxies = self.__get_sites()
+                self.__min_valid_proxies = old_min_valid_proxies
+                self.__accepted_bad_proxy_quote = old_accepted_bad_proxy_quote
             else:
                 self.logger.info("try reading proxies from {0}".format(self.__proxies_file))
                 with open(self.__proxies_file, "r") as f:
@@ -87,9 +97,9 @@ class ProxyRotator:
             except ProxyError:
                 self.logger.error("      {0:25s} ProxyError".format(proxy))
             except Timeout:
-                self.logger.error("      {0:25s} Timeout (timeout={1})".format(proxy, timeout))
+                self.logger.error("      {0:25s} Timeout (timeout={1})".format(proxy, timeout[0]))
                 if timeout[0] < self.__max_timeout:
-                    self.__validate_proxies(timeout=(timeout[0] + timeout[1],(timeout[0])))
+                    self.__validate_proxies(timeout=(timeout[0] + timeout[1], timeout[0]))
             except ConnectionError:
                 self.logger.error("      {0:25s} ConnectionError".format(proxy))
             except RequestException as e:
@@ -130,53 +140,55 @@ class ProxyRotator:
             return False
 
     @debug_verbose
-    def rotating_requests(self, url, timeout=None, proxy=True, index=0) -> requests.Response:
+    def rotating_requests(self, url, proxy=True, timeout=None) -> requests.Response:
         def error_handling(name, index):
+            self.__bad_valid_proxies += 1
             self.logger.error(
-                "proxy {0:25s} ERROR {1} (bad proxies: {2} / valid proxies: {3})".format(self.__valid_proxies[index],
+                "{0:>17} {1:25s} ERROR {2} (bad proxies: {3} / valid proxies: {4})".format("proxy", self.__valid_proxies[index],
                                                                                          name, self.__bad_valid_proxies,
                                                                                          len(self.__valid_proxies)))
             self.__valid_proxies.pop(index)
-            self.__bad_valid_proxies += 1
-            if float(self.__bad_valid_proxies) / len(self.__valid_proxies) > self.__accepted_bad_proxy_quote:
+            
+            if float(self.__bad_valid_proxies) / len(self.__valid_proxies) > self.__accepted_bad_proxy_quote or len(self.__valid_proxies) < self.__min_valid_proxies:
+                self.__valid_proxies_index = 0
                 self.__get_proxies()
-
-        if not timeout:
-            timeout = self.__start_timeout
-        if index != 0:
-            proxies = {"http": self.__valid_proxies[index], "https": self.__valid_proxies[index]}
-        elif proxy:
-            index += self.__request_counter % (len(self.__valid_proxies) - 1)
-            proxies = {"http": self.__valid_proxies[index], "https": self.__valid_proxies[index]}
+                self.__bad_valid_proxies = 0
+        if proxy:
+            if not timeout:
+                self.__valid_proxies_index = self.__request_counter % (len(self.__valid_proxies))
+            proxies = {"http": self.__valid_proxies[self.__valid_proxies_index], "https": self.__valid_proxies[self.__valid_proxies_index]}
         else:
             proxies = None
+        if not timeout:
+            timeout = self.__start_timeout
 
         try:
             if proxy:
-                self.logger.info("request via proxy {0:25s} to {1} timeout={2:2d}".format(str(proxies["http"]), url, timeout[0]))
-            self.__request_counter += 1
+                self.logger.info("request via proxy {0:25s} to {1} timeout={2:2s}".format(str(proxies["http"]), url, str(timeout[0])))
             response = requests.get(url,
                                     proxies=proxies,
                                     headers={
                                         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36'},
                                     timeout=timeout[0]
                                     )
+            self.__request_counter += 1
             return response
         except Timeout:
-            self.logger.error("proxy {0:25s} Timeout (timeout={1})".format(self.__valid_proxies[index], timeout[0]))
+            self.logger.error("{0:>17} {1:25s} Timeout (timeout={2})".format("proxy", self.__valid_proxies[self.__valid_proxies_index], timeout[0]))
             if timeout[0] < self.__max_timeout:
-                return self.rotating_requests(url, proxy, index, timeout=(timeout[0]+timeout[1],timeout[0]))
+                return self.rotating_requests(url, proxy, timeout=(timeout[0]+timeout[1],timeout[0]))
             else:
-                return self.rotating_requests(url, timeout, proxy)
+                error_handling("Timeout", self.__valid_proxies_index)
+                return self.rotating_requests(url, proxy)
         except ContentDecodingError:
-            error_handling("ContentDecodingError", index)
-            return self.rotating_requests(url, timeout, proxy, index)
+            error_handling("ContentDecodingError", self.__valid_proxies_index)
+            return self.rotating_requests(url, proxy)
         except TooManyRedirects:
-            error_handling("TooManyRedirects", index)
-            return self.rotating_requests(url, timeout, proxy, index)
+            error_handling("TooManyRedirects", self.__valid_proxies_index)
+            return self.rotating_requests(url, proxy)
         except ConnectionError:
-            error_handling("ConnectionError", index)
-            return self.rotating_requests(url, timeout, proxy, index)
+            error_handling("ConnectionError", self.__valid_proxies_index)
+            return self.rotating_requests(url, proxy)
 
     @debug_verbose
     def __get_sites(self, own_ip=False) -> list:
