@@ -75,7 +75,7 @@
                     "debug_verbose_handler",
                     "debug_one_line_handler"
                 ],
-                "level": "DEBUG",
+                "level": "INFO",
                 "propagate": true
             }
         }

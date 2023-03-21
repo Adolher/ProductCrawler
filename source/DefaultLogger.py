@@ -73,41 +73,44 @@ def debug_verbose(func):
     sig = inspect.signature(func)
 
     def debug_wrapper(self, *args, **kwargs):   # ToDo: #18 make debug_wrapper thread save
-
-        bound = sig.bind(self, *args, **kwargs)
-        bound.apply_defaults()
         
-        recurs_stack = inspect.getouterframes(inspect.currentframe())  # ToDo: #8 try to replace '<module>' with module_name
-        recurs_stack.reverse()
-        calling_depth = len(recurs_stack)
+        if self.logger.isEnabledFor(10):
+            bound = sig.bind(self, *args, **kwargs)
+            bound.apply_defaults()
+            
+            recurs_stack = inspect.getouterframes(inspect.currentframe())  # ToDo: #8 try to replace '<module>' with module_name
+            recurs_stack.reverse()
+            calling_depth = len(recurs_stack)
 
-        way = ""
-        for rs in recurs_stack:
-            if "debug" in rs[3] or rs == recurs_stack[-1]:
-                calling_depth -= 1
-                continue
-            else:
-                way += f"in {rs[3]} [line: {rs[2]}] -> {rs[4][0].strip()} >>> "
-        way = way[:-5] if way.endswith(">>> ") else way
+            way = ""
+            for rs in recurs_stack:
+                if "debug" in rs[3] or rs == recurs_stack[-1]:
+                    calling_depth -= 1
+                    continue
+                else:
+                    way += f"in {rs[3]} [line: {rs[2]}] -> {rs[4][0].strip()} >>> "
+            way = way[:-5] if way.endswith(">>> ") else way
 
-        module_name = inspect.getmodule(func).__name__
-        qname = func.__qualname__
-        module_class_function = (module_name + "." + qname).center(len(str(module_name + "." + qname)) + 6, ' ').center(200, '*')
+            module_name = inspect.getmodule(func).__name__
+            qname = func.__qualname__
+            module_class_function = (module_name + "." + qname).center(len(str(module_name + "." + qname)) + 6, ' ').center(200, '*')
 
-        extra = {"position": "start", "module_class_function": module_class_function, "line": 42,
-                 "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
+            extra = {"position": "start", "module_class_function": module_class_function, "line": 42,
+                    "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
 
-        adapt_logger = DebugVerboseAdapter(self.logger, extra)
-        adapt_logger.send_log(f"arguments: {bound.arguments}")
+            adapt_logger = DebugVerboseAdapter(self.logger, extra)
+            adapt_logger.send_log(f"arguments: {bound.arguments}")
 
-        start = datetime.now()
-        return_val = func(self, *args, **kwargs)
-        end = datetime.now()
+            start = datetime.now()
+            return_val = func(self, *args, **kwargs)
+            end = datetime.now()
 
-        extra = {"position":"end", "return_val":return_val, "elapsed":end - start, "placeholder": ""}
+            extra = {"position":"end", "return_val":return_val, "elapsed":end - start, "placeholder": ""}
 
-        adapt_logger = DebugVerboseAdapter(self.logger, extra)
-        adapt_logger.send_log(f"return {return_val}")
+            adapt_logger = DebugVerboseAdapter(self.logger, extra)
+            adapt_logger.send_log(f"return {return_val}")
+        else:
+            return_val = func(self, *args, **kwargs)
 
         return return_val
 
