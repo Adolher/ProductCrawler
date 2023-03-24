@@ -17,8 +17,8 @@ START_TIMEOUT = (5,3)
 MAX_TIMEOUT = 5
 ACCEPTED_BAD_PROXY_QUOTE = 0.5
 MIN_VALID_PROXIES = 5
-PROXIES_FILE = "proxies.txt"
-VALID_PROXIES_FILE = "valid_proxies.txt"
+PROXIES_FILE = "proxies"
+VALID_PROXIES_FILE = "valid_proxies"
 
 # ToDo: #22 set docstrings
 # ToDo: #26 create an API to configure the const values
@@ -26,8 +26,7 @@ VALID_PROXIES_FILE = "valid_proxies.txt"
 
 @DebugVervoseClassWrapper
 class ProxyRotator:
-    def __init__(self, num_threads=NUM_THREADS, start_timeout=START_TIMEOUT, max_timeout=MAX_TIMEOUT, proxies_file=PROXIES_FILE, valid_proxies_file=VALID_PROXIES_FILE, accepted_bad_proxy_quote=ACCEPTED_BAD_PROXY_QUOTE, min_valid_proxies=MIN_VALID_PROXIES, is_GUI=False):
-        self.__is_GUI = is_GUI
+    def __init__(self, num_threads=NUM_THREADS, start_timeout=START_TIMEOUT, max_timeout=MAX_TIMEOUT, proxies_file=PROXIES_FILE, valid_proxies_file=VALID_PROXIES_FILE, accepted_bad_proxy_quote=ACCEPTED_BAD_PROXY_QUOTE, min_valid_proxies=MIN_VALID_PROXIES):
         self.__min_valid_proxies = min_valid_proxies
         self.__accepted_bad_proxy_quote = accepted_bad_proxy_quote
         self.__threads = num_threads
@@ -36,17 +35,15 @@ class ProxyRotator:
         self.__proxies_file = proxies_file
         self.__valid_proxies_file = valid_proxies_file
 
+        self.__valid_proxies_index = 0
+        self.__bad_proxies = 0
+        self.__request_counter = 0
+
         self.__check_pool = False
 
         self.__unchecked_proxies = []
         self.__unchecked_proxies_queue = queue.Queue()
         self.__valid_proxies = []
-
-        self.__valid_proxies_index = 0
-        self.__bad_proxies = 0
-        self.__request_counter = 0
-
-        
 
         self.__urls = [
             "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",     # https://docs.proxyscrape.com/
@@ -73,10 +70,9 @@ class ProxyRotator:
                                                                                          len(self.__valid_proxies)))
 
         if not self.__check_pool:
-            if self.__check_proxy_pool():
-                self.__get_valid_proxies()
+            self.__check_proxy_pool()
 
-        if self.__bad_proxies >= len(self.__valid_proxies):
+        if self.__bad_proxies > len(self.__valid_proxies):
             return False
 
         if proxy:
@@ -88,13 +84,11 @@ class ProxyRotator:
 
         if not timeout:
             timeout = self.__start_timeout
-        
-        
 
         try:
             if proxy:
                 self.logger.info("request via proxy {0:25s} to {1} timeout={2:2s}".format(str(proxies["http"]), url, str(timeout[0])))
-            self.__request_counter += 1 #########################
+            self.__request_counter += 1
             response = requests.get(url,
                                     proxies=proxies,
                                     headers={
@@ -129,18 +123,19 @@ class ProxyRotator:
     @debug_verbose
     def __get_proxies(self, run) -> None:
         if run <= 2:
-            if not self.__read_proxy_file():
+            if not self.__read_file(file=self.__proxies_file, target=self.__unchecked_proxies):
                 if not self.__get_proxies_from_web(own_ip=True):
                     # what to do?
                     pass
         elif run <= 3:
+            self.__valid_proxies = self.__unchecked_proxies
             if not self.__get_proxies_from_web():
-                self.__delete_proxy_file()
+                self.__delete_file(self.__proxies_file)
                 if not self.__get_proxies_from_web(own_ip=True):
                     # what to do?
                     pass
         else:
-            self.__delete_proxy_file()
+            self.__delete_file(self.__proxies_file)
             if not self.__get_proxies_from_web(own_ip=True):
                 # what to do?
                 pass
@@ -148,10 +143,13 @@ class ProxyRotator:
     @debug_verbose
     def __get_valid_proxies(self, run) -> None:
         if run <= 1:
-            if not self.__read_valid_proxy_file():
+            if not self.__read_file(file=self.__valid_proxies_file, target=self.__valid_proxies):
+                self.__valid_proxies = []
+                run += 1
                 self.__get_proxies(run)
         else:
-            self.__delete_valid_proxy_file()
+            self.__valid_proxies = []
+            self.__delete_file(self.__valid_proxies_file)
             self.__get_proxies(run)
 
     #######################################################################################################################
@@ -175,7 +173,8 @@ class ProxyRotator:
             t.start()
         for thd in ths:
             thd.join()
-        self.logger.info(f"found {len(self.__valid_proxies)} valid proxies")
+        self.logger.info("found {} valid proxies".format(len(self.__valid_proxies)))
+        self.__write_list_to_file(self.__valid_proxies, self.__valid_proxies_file)
 
     @debug_verbose
     def __validate_proxies(self, timeout) -> None:
@@ -226,11 +225,12 @@ class ProxyRotator:
                 run = 0
             
             if run:
-                self.logger.info(f"Check proxy pool...")
+                self.logger.info("Check proxy pool...")
+                self.__bad_proxies = 0
                 self.__get_valid_proxies(run)
-                self.__start_validating_proxies()
+                if run <= 1:
+                    self.__start_validating_proxies()
             else:
-                run = 0
                 self.__check_pool = False
 
         
@@ -270,7 +270,8 @@ class ProxyRotator:
             # ToDo: #17 clean proxies from duplicates
             self.logger.info("Request successful")
         
-        if not proxies.count() == 0:
+        if not len(proxies) == 0:
+            self.__write_list_to_file(proxies, self.__proxies_file)
             self.__unchecked_proxies = proxies
             return True
         else:
@@ -304,69 +305,42 @@ class ProxyRotator:
     #######################################################################################################################
 
     @debug_verbose
-    def __write_proxy_file(self, proxy_list: list):
-        self.logger.info(f"Try to save proxies in {self.__proxies_file}")
+    def __delete_file(self, file) -> None:
+        self.logger.debug("Try to delete {}".format(file))
+        try:
+            os.remove(file)
+            self.logger.info("{} has been deleted.".format(file))
+        except FileNotFoundError:
+            self.logger.error("{} does not exist!".format(file))
+
+    @debug_verbose
+    def __write_list_to_file(self, proxy_list: list, file):
+        self.logger.info("Try to save values to {}".format(file))
         try:
             with open(self.__proxies_file, "w") as f:
                 for i in range(len(proxy_list)):
                     self.logger.info("Write {0}".format(proxy_list[i]))
                     f.write(proxy_list[i] + "\n")
-            self.logger.info(f"Finalized writing proxies to {self.__proxies_file}")
-        except:
-            pass
+            self.logger.info("Finalized writing values to {}".format(file))
+        except Exception as e:
+            self.logger.error(e)
 
     @debug_verbose
-    def __read_proxy_file(self) -> bool:
-        self.logger.info("try reading proxies from {0}".format(self.__proxies_file))
+    def __read_file(self, file, target: list) -> bool:
+        self.logger.info("Try to read list from {0}".format(file))
         try:
-            with open(self.__proxies_file, "r") as f:
-                proxies = f.read().split("\n")[:-1]
+            with open(file, "r") as f:
+                value = f.readline().replace("\n","")
+                target.append(value)
+                self.logger.info("Get {}".format(value))
+                # proxies = f.read().split("\n")[:-1]
 
-            self.__unchecked_proxies = proxies
-            self.logger.info("get {0} proxies".format(len(self.__unchecked_proxies)))
+            # self.__unchecked_proxies = proxies
+            self.logger.info("Get {0} values".format(len(target)))
             return True
         except FileNotFoundError:
-            self.logger.error("{0} does not exist".format(self.__proxies_file))
+            self.logger.error("{0} does not exist".format(file))
             return False
-
-    @debug_verbose
-    def __delete_proxy_file(self):
-        self.logger.debug(f"Try to delete {self.__proxies_file}")
-        try:
-            os.remove(self.__proxies_file)
-        except FileNotFoundError:
-            self.logger.error(f"{self.__proxies_file} does not exist!")
-
-    @debug_verbose
-    def __write_valid_proxy_file(self):
-        self.logger.info("Try to save proxies in {0}".format(self.__valid_proxies_file))
-        try:
-            with open(self.__valid_proxies_file, "w") as f:
-                for proxy in self.__valid_proxies:
-                    f.write(proxy + "\n")
-            self.logger.info("{0} valid proxies were saved".format(len(self.__valid_proxies)))
-        except:
-            pass
-
-    @debug_verbose
-    def __read_valid_proxy_file(self) -> bool:
-        self.logger.info("Try to read {0}".format(self.__valid_proxies_file))
-        try:
-            with open(self.__valid_proxies_file, "r") as f:
-                self.__valid_proxies = f.read().split()[:-1]
-            self.logger.info("get {0} valid proxies".format(len(self.__valid_proxies)))
-            return True
-        except FileNotFoundError:
-            self.logger.error("{0} does not exist".format(self.__valid_proxies_file))
-            return False
-
-    @debug_verbose
-    def __delete_valid_proxy_file(self):
-        self.logger.debug(f"Try to delete {self.__valid_proxies_file}")
-        try:
-            os.remove(self.__valid_proxies_file)
-        except FileNotFoundError:
-            self.logger.error(f"{self.__valid_proxies_file} does not exist!")
 
 
 if __name__ == "__main__":

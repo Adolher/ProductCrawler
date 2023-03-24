@@ -27,6 +27,6 @@ sites = [
 
 rotator = ProxyRotator()
 c = 0
-for i in range(5):
+for i in range(1):
     for x in range(len(sites)):
         response = rotator.rotating_requests(sites[x])
