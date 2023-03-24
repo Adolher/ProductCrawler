@@ -26,7 +26,7 @@ def initialize_logger():
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as cf:
             config = json.load(cf)
-            logging.config.dictConfig(config["dev_logger"])     # ToDo: #19 work on formats -> in all Formatters the same informations but in diffrent format
+            logging.config.dictConfig(config["dev_logger"])
     except FileNotFoundError as e:
         log.error(e)
     return log
@@ -50,23 +50,50 @@ def std_err_filter(level):
 
 
 class DebugVerboseAdapter(logging.LoggerAdapter):
-    def __init__(self, logger, extra):
+    def __init__(self, logger, extra, is_class=False):
         super().__init__(logger, extra)
         self.handler_index = [ i for i in range(len(self.logger.root.handlers)) if self.logger.root.handlers[i].name == "debug_verbose_handler"][0]
         self.native_formatter = self.logger.root.handlers[self.handler_index].formatter
 
-        if extra["position"] == "start":
-            fmt = "\n{asctime: <24}{levelname: <8}{placeholder:*<168}\n{module_class_function}\n{placeholder:*^200}\n{processName} {threadName}\n\ncalling depth: {calling_depth}\ncalling stack: {way}\n\n-> arguments: {arguments}\n"
+        if is_class:
+            fmt = "\n{placeholder:+^250}\n{asctime: <24}{levelname: <8}{placeholder:+<218}\n{module_class}\n{placeholder:+^250}\n{placeholder:+^250}\n{processName} {threadName}\n\n{class_str}\n\n"
             self.temp_formatter = logging.Formatter(fmt, style="{")
-        elif extra["position"] == "end":
-            self.extra["return_val"] = ('return ' + str(self.extra['return_val'])).center(len('return ' + str(self.extra['return_val'])) + 6).center(200, '^')
-            fmt = "\nelapsed time: {elapsed}\n{return_val}\n{placeholder:^^200}\n"
-            self.temp_formatter = logging.Formatter(fmt, style="{")
+        else:
+            if extra["position"] == "start":
+                fmt = "\n{asctime: <24}{levelname: <8}{placeholder:*<168}\n{module_class_function}\n{placeholder:*^200}\n{processName} {threadName}\n\ncalling depth: {calling_depth}\ncalling stack: {way}\n\n-> arguments: {arguments}\n"
+                self.temp_formatter = logging.Formatter(fmt, style="{")
+            elif extra["position"] == "end":
+                self.extra["return_val"] = ('return ' + str(self.extra['return_val'])).center(len('return ' + str(self.extra['return_val'])) + 6).center(200, '^')
+                fmt = "\nelapsed time: {elapsed}\n{return_val}\n{placeholder:^^200}\n"
+                self.temp_formatter = logging.Formatter(fmt, style="{")
 
     def send_log(self, msg):
         self.logger.root.handlers[self.handler_index].setFormatter(self.temp_formatter)
         self.debug(msg)
         self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
+
+
+class DebugVervoseClassWrapper():
+    def __init__(self, wrapped_class) -> None:
+        print("DebugVervoseClassWrapper.__init__() >> start")
+        self.wrapped_class = wrapped_class
+        print("DebugVervoseClassWrapper.__init__() >> end\n")
+
+    def __call__(self, *args, **kwargs):
+        print("DebugVervoseClassWrapper.__call__() >> start")
+        self.wrapped_class.logger = logging.getLogger(self.wrapped_class.__module__)
+        self.wrapped_class = self.wrapped_class(*args, **kwargs)
+
+        module_class = str(self.wrapped_class.__module__).center(len(str(self.wrapped_class.__module__)) + 6, ' ').center(250, '+')
+        extra = {"module_class": module_class,"class_str": self.wrapped_class.__str__(), "placeholder": ""}
+
+        adapt_logger = DebugVerboseAdapter(self.wrapped_class.logger, extra, is_class=True)
+        adapt_logger.send_log(f"arguments: {self.wrapped_class.__repr__()}")
+        
+        
+        
+        print("DebugVervoseClassWrapper.__call__() >> end\n")
+        return self.wrapped_class
 
 
 def debug_verbose(func):
@@ -78,7 +105,7 @@ def debug_verbose(func):
             bound = sig.bind(self, *args, **kwargs)
             bound.apply_defaults()
             
-            recurs_stack = inspect.getouterframes(inspect.currentframe())  # ToDo: #8 try to replace '<module>' with module_name
+            recurs_stack = inspect.getouterframes(inspect.currentframe())
             recurs_stack.reverse()
             calling_depth = len(recurs_stack)
 
@@ -95,7 +122,7 @@ def debug_verbose(func):
             qname = func.__qualname__
             module_class_function = (module_name + "." + qname).center(len(str(module_name + "." + qname)) + 6, ' ').center(200, '*')
 
-            extra = {"position": "start", "module_class_function": module_class_function, "line": 42,
+            extra = {"position": "start", "module_class_function": module_class_function,
                     "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
 
             adapt_logger = DebugVerboseAdapter(self.logger, extra)
