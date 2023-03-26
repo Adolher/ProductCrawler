@@ -77,7 +77,7 @@ class ProxyRotator:
 
         if proxy:
             if not timeout:
-                self.__valid_proxies_index = self.__request_counter % (len(self.__valid_proxies))
+                self.__valid_proxies_index = self.__request_counter % len(self.__valid_proxies)
             proxies = {"http": self.__valid_proxies[self.__valid_proxies_index], "https": self.__valid_proxies[self.__valid_proxies_index]}
         else:
             proxies = None
