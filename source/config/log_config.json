@@ -11,14 +11,9 @@
                 "class": "logging.Formatter",
                 "format": "%(levelname)-8s %(message)s"
             },
-            "debug_verbose_formatter": {
+            "debug_formatter": {
                 "class": "logging.Formatter",
-                "format": "{asctime} {levelname:<8}  in {name}.{module}.{funcName} as {processName} {threadName:<10} line {lineno} -> {message}",
-                "style": "{"
-            },
-            "debug_one_line_formatter": {
-                "class": "logging.Formatter",
-                "format": "{asctime} {levelname:<8}  in {name}.{module}.{funcName} as {processName} {threadName:<10} line {lineno} -> {message}",
+                "format": "{time_info:>27} {levelname:<8} {position:>8}{c_func_name}{name}.{module}.{funcName} as {processName} {threadName:<10} line {lineno} -> {message}",
                 "style": "{"
             }
         },
@@ -37,33 +32,24 @@
                 "stream": "ext://sys.stderr",
                 "filters": ["std_err_filter"]
             },
-            "debug_verbose_handler": {
+            "debug_handler": {
                 "level": "DEBUG",
                 "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "debug_verbose_formatter",
-                "filename": "logs/debug_verbose.log",
+                "formatter": "debug_formatter",
+                "filename": "logs/debug.log",
                 "mode": "w",
                 "encoding": "utf-8",
-                "maxBytes": 5242880,
-                "backupCount": 3
-            },
-            "debug_one_line_handler": {
-                "level": "DEBUG",
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "debug_one_line_formatter",
-                "filename": "logs/debug_one_line.log",
-                "mode": "w",
                 "maxBytes": 5242880,
                 "backupCount": 3
             }
         },
         "filters": {
             "std_out_filter": {
-                "()": "source.DefaultLogger.std_out_filter",
+                "()": "source.DefaultLogger.__std_out_filter",
                 "level": "WARNING"
             },
             "std_err_filter": {
-                "()": "source.DefaultLogger.std_err_filter",
+                "()": "source.DefaultLogger.__std_err_filter",
                 "level": "ERROR"
             }
         },
@@ -72,8 +58,7 @@
                 "handlers": [
                     "std_out_handler",
                     "std_err_handler",
-                    "debug_verbose_handler",
-                    "debug_one_line_handler"
+                    "debug_handler"
                 ],
                 "level": "DEBUG",
                 "propagate": true

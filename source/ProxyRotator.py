@@ -8,23 +8,23 @@ import os
 import queue
 import requests
 import threading
-from source.DefaultLogger import DebugVervoseClassWrapper, debug_verbose
-from requests.exceptions import RequestException, ProxyError, ConnectionError, Timeout, ContentDecodingError, \
-    TooManyRedirects
+from datetime import datetime
+from source.DefaultLogger import DebugClassWrapper
+from requests.exceptions import RequestException, ProxyError, ConnectionError, Timeout, ContentDecodingError, TooManyRedirects
 
-NUM_THREADS = 1
+NUM_THREADS = 500
 START_TIMEOUT = (5,3)
-MAX_TIMEOUT = 5
+MAX_TIMEOUT = 60
 ACCEPTED_BAD_PROXY_QUOTE = 0.5
-MIN_VALID_PROXIES = 5
-PROXIES_FILE = "proxies"
-VALID_PROXIES_FILE = "valid_proxies"
+MIN_VALID_PROXIES = 100
+PROXIES_FILE = "proxies.txt"
+VALID_PROXIES_FILE = "valid_proxies.txt"
 
 # ToDo: #22 set docstrings
 # ToDo: #26 create an API to configure the const values
 # ToDo: #27 read and save const values from/ to .ini
 
-@DebugVervoseClassWrapper
+@DebugClassWrapper
 class ProxyRotator:
     def __init__(self, num_threads=NUM_THREADS, start_timeout=START_TIMEOUT, max_timeout=MAX_TIMEOUT, proxies_file=PROXIES_FILE, valid_proxies_file=VALID_PROXIES_FILE, accepted_bad_proxy_quote=ACCEPTED_BAD_PROXY_QUOTE, min_valid_proxies=MIN_VALID_PROXIES):
         self.__min_valid_proxies = min_valid_proxies
@@ -38,6 +38,7 @@ class ProxyRotator:
         self.__valid_proxies_index = 0
         self.__bad_proxies = 0
         self.__request_counter = 0
+        self.__run = 0.1
 
         self.__check_pool = False
 
@@ -56,11 +57,30 @@ class ProxyRotator:
         return string
     
     def __repr__(self) -> str:  # ToDo: #32 write __repr__()
-        string = ""
+        self_dict = {
+            "self": "class ProxyRotator",
+            "min_valid_proxies": self.__min_valid_proxies,
+            "accepted_bad_proxy_quote": self.__accepted_bad_proxy_quote,
+            "num_threads": self.__threads,
+            "start_timeout": self.__start_timeout,
+            "max_timeout": self.__max_timeout,
+            "proxies_file": self.__proxies_file,
+            "valid_proxies_file": self.__valid_proxies_file,
+            "valid_proxies_index": self.__valid_proxies_index,
+            "bad_proxies": self.__bad_proxies,
+            "request_counter": self.__request_counter,
+            "run": self.__run,
+            "check_pool": self.__check_pool,
+            "unchecked_proxies": self.__unchecked_proxies,
+            "unchecked_proxies_queue": self.__unchecked_proxies_queue,
+            "valid_proxies": self.__valid_proxies,
+            "urls": self.__urls,
+        }
+        string = str(self_dict)
 
         return string
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def rotating_requests(self, url, proxy=True, timeout=None) -> requests.Response:
         def error_handling(name, index):
             self.__bad_proxies += 1
@@ -84,11 +104,12 @@ class ProxyRotator:
 
         if not timeout:
             timeout = self.__start_timeout
+            self.__request_counter += 1
 
         try:
             if proxy:
                 self.logger.info("request via proxy {0:25s} to {1} timeout={2:2s}".format(str(proxies["http"]), url, str(timeout[0])))
-            self.__request_counter += 1
+            
             response = requests.get(url,
                                     proxies=proxies,
                                     headers={
@@ -120,14 +141,15 @@ class ProxyRotator:
 
     #######################################################################################################################
 
-    @debug_verbose
-    def __get_proxies(self, run) -> None:
-        if run <= 2:
+    @DebugClassWrapper.debug_method_wrapper
+    def __get_proxies(self) -> None:
+        # self.__unchecked_proxies = []
+        if self.__run <= 2:
             if not self.__read_file(file=self.__proxies_file, target=self.__unchecked_proxies):
                 if not self.__get_proxies_from_web(own_ip=True):
                     # what to do?
                     pass
-        elif run <= 3:
+        elif self.__run <= 3:
             self.__valid_proxies = self.__unchecked_proxies
             if not self.__get_proxies_from_web():
                 self.__delete_file(self.__proxies_file)
@@ -140,17 +162,17 @@ class ProxyRotator:
                 # what to do?
                 pass
     
-    @debug_verbose
-    def __get_valid_proxies(self, run) -> None:
-        if run <= 1:
+    @DebugClassWrapper.debug_method_wrapper
+    def __get_valid_proxies(self) -> None:
+        if self.__run <= 1:
             if not self.__read_file(file=self.__valid_proxies_file, target=self.__valid_proxies):
                 self.__valid_proxies = []
-                run += 1
-                self.__get_proxies(run)
+                self.__run += 1
+                self.__get_proxies()
         else:
             self.__valid_proxies = []
             self.__delete_file(self.__valid_proxies_file)
-            self.__get_proxies(run)
+            self.__get_proxies()
 
     #######################################################################################################################
 
@@ -158,7 +180,7 @@ class ProxyRotator:
 
     #######################################################################################################################
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __start_validating_proxies(self) -> None:
         self.logger.info("start validating proxies")
         self.__valid_proxies = []
@@ -176,7 +198,7 @@ class ProxyRotator:
         self.logger.info("found {} valid proxies".format(len(self.__valid_proxies)))
         self.__write_list_to_file(self.__valid_proxies, self.__valid_proxies_file)
 
-    @debug_verbose
+    # @DebugClassWrapper.debug_method_wrapper
     def __validate_proxies(self, timeout) -> None:
         url = "http://ipinfo.io/json"
         while not self.__unchecked_proxies_queue.empty():
@@ -204,31 +226,31 @@ class ProxyRotator:
             except RequestException as e:
                 self.logger.error(e)
 
-    @debug_verbose
-    def __check_proxy_pool(self, run=0.1) -> None:
+    @DebugClassWrapper.debug_method_wrapper
+    def __check_proxy_pool(self) -> None:
         self.__check_pool = True
-        while(run):
-            run = int(run)
+        while(self.__run):
+            self.__run = int(self.__run)
             if len(self.__valid_proxies) == 0:
                 self.logger.warning("You hav 0 valid proxies!")
-                run += 1
+                self.__run += 1
             elif len(self.__valid_proxies) < self.__min_valid_proxies:
                 self.logger.warning("You hav {0} valid proxies, {1} under minimum amount!".format(len(self.__valid_proxies), self.__min_valid_proxies - len(self.__valid_proxies)))
-                run += 1
+                self.__run += 1
             elif self.__bad_proxies / float(len(self.__valid_proxies)) > self.__accepted_bad_proxy_quote:
                 self.logger.warning("Your bad proxy quote is {0}, defined bad proxy qoute is {1}".format(self.__bad_proxies / float(len(self.__valid_proxies)), self.__accepted_bad_proxy_quote))
-                run += 1
-            elif self.__request_counter % len(self.__valid_proxies) == 0:
+                self.__run += 1
+            elif self.__request_counter % len(self.__valid_proxies) == 0 and self.__request_counter != 0:
                 self.logger.info("Check proxypool regulary after {0} runs".format(len(self.__valid_proxies)))
-                run += 1
+                self.__run += 1
             else:
-                run = 0
+                self.__run = 0
             
-            if run:
+            if self.__run:
                 self.logger.info("Check proxy pool...")
                 self.__bad_proxies = 0
-                self.__get_valid_proxies(run)
-                if run <= 1:
+                self.__get_valid_proxies()
+                if self.__run > 1:
                     self.__start_validating_proxies()
             else:
                 self.__check_pool = False
@@ -242,7 +264,7 @@ class ProxyRotator:
 
     #######################################################################################################################
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __get_proxies_from_web(self, own_ip=False) -> bool:
         proxies = []
 
@@ -270,7 +292,7 @@ class ProxyRotator:
             # ToDo: #17 clean proxies from duplicates
             self.logger.info("Request successful")
         
-        if not len(proxies) == 0:
+        if len(proxies) != 0:
             self.__write_list_to_file(proxies, self.__proxies_file)
             self.__unchecked_proxies = proxies
             return True
@@ -284,14 +306,14 @@ class ProxyRotator:
 
     #######################################################################################################################
 
-    # @debug_verbose
+    # @DebugClassWrapper.debug_method_wrapper
     # def __free_proxy_list(self, html):    # ToDo: #15 finish this method
     #     proxies_fpl = []
     #     soup = BeautifulSoup(html, "html.parser")
     #     x = soup.find("textarea")
     #     return proxies_fpl
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __proxyscrape(self, response) -> list:
         proxies = response.text.split("\r\n")
         self.logger.info("Get {0} proxies from {1}".format(len(proxies), response.url))
@@ -304,20 +326,20 @@ class ProxyRotator:
 
     #######################################################################################################################
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __delete_file(self, file) -> None:
-        self.logger.debug("Try to delete {}".format(file))
+        self.logger.info("Try to delete {}".format(file))
         try:
             os.remove(file)
             self.logger.info("{} has been deleted.".format(file))
         except FileNotFoundError:
             self.logger.error("{} does not exist!".format(file))
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __write_list_to_file(self, proxy_list: list, file):
         self.logger.info("Try to save values to {}".format(file))
         try:
-            with open(self.__proxies_file, "w") as f:
+            with open(file, "w") as f:
                 for i in range(len(proxy_list)):
                     self.logger.info("Write {0}".format(proxy_list[i]))
                     f.write(proxy_list[i] + "\n")
@@ -325,19 +347,20 @@ class ProxyRotator:
         except Exception as e:
             self.logger.error(e)
 
-    @debug_verbose
+    @DebugClassWrapper.debug_method_wrapper
     def __read_file(self, file, target: list) -> bool:
         self.logger.info("Try to read list from {0}".format(file))
         try:
             with open(file, "r") as f:
-                value = f.readline().replace("\n","")
-                target.append(value)
-                self.logger.info("Get {}".format(value))
-                # proxies = f.read().split("\n")[:-1]
-
-            # self.__unchecked_proxies = proxies
+                while True:
+                    value = f.readline().replace("\n","")
+                    if not value: break
+                    target.append(value)
+                    self.logger.info("Get {}".format(value), {"time_info": datetime.now, "position": "in"})
+            
             self.logger.info("Get {0} values".format(len(target)))
-            return True
+            r = False if len(target) == 0 else True
+            return r
         except FileNotFoundError:
             self.logger.error("{0} does not exist".format(file))
             return False
