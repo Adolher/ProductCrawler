@@ -2,10 +2,28 @@
 """
 Created on Sat Mar 11 07:37:28 2023
 
-@author: jpw
+@author: J.P. Wagner
+
+
+This module is created to make debug logging more comfortable. You just need to wrap your classes, methods or functions and you'll get your debug-informations.
+
+Classes:
+    DebugClassWrapper():
+        __init__(self, wrapped_class: object) -> None
+        __call__(self, *args, **kwargs) -> object
+        debug_method_wrapper(func: object) -> object
+        
+    DebugAdapter(logging.LoggerAdapter):
+        __init__(self, logger: logging.Logger, extra: dict) -> None
+        process(self, msg: str, kwargs: dict) -> tuple
+
+Functions:
+    initialize_logger() -> logging.Logger
+    __std_out_filter(level: int) -> object
+    __std_err_filter(level: int) -> object
+
 """
 
-import os
 import json
 import inspect
 import logging
@@ -14,24 +32,129 @@ from datetime import datetime
 
 CONFIG_FILE = "source/config/log_config.json"
 
-# ToDo: #10 create a class wrapper to log class.__init__()
-# ToDo: #11 set Docstrings
 # ToDo: #23 change RotatingFileHandler to TimedRotatingFileHandler
 
 
-def initialize_logger():
+def initialize_logger() -> logging.Logger:
+    """
+    
+    Initializes a basic Logger according to the data in config/log_config.json
+    Call this function first of all after import statements
+    It will be not necessary to import the logging module
+    
+    Example:
+        from DefaultLogger import initialize_logger
+        
+        logger = initialize_logger()
+        
+        logger.debug("This is a debug message")
+        logger.info("This is a info message")
+
+    Returns:
+        logging.Logger: RootLogger
+    """
     logging.basicConfig()
     log = logging.getLogger()
+    log = DebugAdapter(log, {})
 
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as cf:
             config = json.load(cf)
-            logging.config.dictConfig(config["dev_logger"])     # ToDo: #19 work on formats -> in all Formatters the same informations but in diffrent format
+            logging.config.dictConfig(config["dev_logger"])
     except FileNotFoundError as e:
         log.error(e)
     return log
 
-def std_out_filter(level):
+
+class DebugClassWrapper():
+    """DebugClassWrapper is used to get debug informations without mulling the methods with 'logging.debug()' calls.
+    
+    Usage:
+        from DefaultLogger import DebugClassWrapper
+        
+        @DebugClassWrapper
+        class MyClass:
+            def __init__(self):
+                ...
+            
+            @DebugClassWrapper.debug_method_wrapper
+            def method(self):
+                ...
+    Attributes:
+        wrapped_class: object
+        
+    Methods:
+        debug_method_wrapper(func)
+
+    """
+    def __init__(self, wrapped_class: object) -> None:
+        self.wrapped_class = wrapped_class
+
+    def __call__(self, *args, **kwargs) -> object:
+        self.wrapped_class.logger = logging.getLogger(self.wrapped_class.__module__)
+        self.wrapped_class.logger = DebugAdapter(self.wrapped_class.logger, {})
+        
+        self.wrapped_class = self.wrapped_class(*args, **kwargs)
+
+        self.wrapped_class.logger.debug(f"arguments: {self.wrapped_class.__repr__()}", extra={"c_func_name":self.wrapped_class.__module__, "position": "initial "})
+        return self.wrapped_class
+
+    @staticmethod
+    def debug_method_wrapper(func: object) -> object:
+        """debug_method_wrapper is used to get debug informations without mulling the methods with 'logging.debug()' calls.
+        
+        Usage:
+            from DefaultLogger import DebugClassWrapper
+            
+            @DebugClassWrapper
+            class MyClass:
+                def __init__(self):
+                    ...
+                
+                @DebugClassWrapper.debug_method_wrapper
+                def method(self):
+                    ...
+        """
+        sig = inspect.signature(func)
+
+        def debug_wrapper(self, *args, **kwargs):   # ToDo: #18 make debug_wrapper thread save
+            
+            if self.logger.isEnabledFor(10):
+                bound = sig.bind(self, *args, **kwargs)
+                bound.apply_defaults()
+
+                module_name = inspect.getmodule(func).__name__
+                qname = func.__qualname__
+                name = (module_name + "." + qname)
+
+                self.logger.debug(f"arguments: {bound.arguments}", extra={"position": "enter ", "c_func_name": name})
+
+                start = datetime.now()
+                return_val = func(self, *args, **kwargs)
+                end = datetime.now()
+
+                self.logger.debug(f"return {return_val}", extra={"time_info":str(end - start), "position":"exit ", "c_func_name": name})
+            else:
+                return_val = func(self, *args, **kwargs)
+
+            return return_val
+
+        return debug_wrapper
+
+
+class DebugAdapter(logging.LoggerAdapter):
+    def __init__(self, logger: logging.Logger, extra: dict) -> None:
+        super().__init__(logger, extra)
+    
+    def process(self, msg: str, kwargs: dict) -> tuple:
+        kwargs["extra"] = {} if "extra" not in kwargs.keys() else kwargs["extra"]
+        kwargs["extra"]["time_info"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f") if "time_info" not in kwargs['extra'].keys() else kwargs["extra"]["time_info"]
+        kwargs["extra"]["position"] = "in " if "position" not in kwargs["extra"].keys() else kwargs["extra"]["position"]
+        kwargs["extra"]["c_func_name"] = "" if "c_func_name" not in kwargs["extra"].keys() else kwargs["extra"]["c_func_name"] + " enbedded in "
+        return msg, kwargs
+
+
+def __std_out_filter(level: int) -> object:
     level = getattr(logging, level)
 
     def filter(record):
@@ -40,78 +163,10 @@ def std_out_filter(level):
     return filter
 
 
-def std_err_filter(level):
+def __std_err_filter(level: int) -> object:
     level = getattr(logging, level)
 
     def filter(record):
         return record.levelno >= level
 
     return filter
-
-
-class DebugVerboseAdapter(logging.LoggerAdapter):
-    def __init__(self, logger, extra):
-        super().__init__(logger, extra)
-        self.handler_index = [ i for i in range(len(self.logger.root.handlers)) if self.logger.root.handlers[i].name == "debug_verbose_handler"][0]
-        self.native_formatter = self.logger.root.handlers[self.handler_index].formatter
-
-        if extra["position"] == "start":
-            fmt = "\n{asctime: <24}{levelname: <8}{placeholder:*<168}\n{module_class_function}\n{placeholder:*^200}\n{processName} {threadName}\n\ncalling depth: {calling_depth}\ncalling stack: {way}\n\n-> arguments: {arguments}\n"
-            self.temp_formatter = logging.Formatter(fmt, style="{")
-        elif extra["position"] == "end":
-            self.extra["return_val"] = ('return ' + str(self.extra['return_val'])).center(len('return ' + str(self.extra['return_val'])) + 6).center(200, '^')
-            fmt = "\nelapsed time: {elapsed}\n{return_val}\n{placeholder:^^200}\n"
-            self.temp_formatter = logging.Formatter(fmt, style="{")
-
-    def send_log(self, msg):
-        self.logger.root.handlers[self.handler_index].setFormatter(self.temp_formatter)
-        self.debug(msg)
-        self.logger.root.handlers[self.handler_index].setFormatter(self.native_formatter)
-
-
-def debug_verbose(func):
-    sig = inspect.signature(func)
-
-    def debug_wrapper(self, *args, **kwargs):   # ToDo: #18 make debug_wrapper thread save
-        
-        if self.logger.isEnabledFor(10):
-            bound = sig.bind(self, *args, **kwargs)
-            bound.apply_defaults()
-            
-            recurs_stack = inspect.getouterframes(inspect.currentframe())  # ToDo: #8 try to replace '<module>' with module_name
-            recurs_stack.reverse()
-            calling_depth = len(recurs_stack)
-
-            way = ""
-            for rs in recurs_stack:
-                if "debug" in rs[3] or rs == recurs_stack[-1]:
-                    calling_depth -= 1
-                    continue
-                else:
-                    way += f"in {rs[3]} [line: {rs[2]}] -> {rs[4][0].strip()} >>> "
-            way = way[:-5] if way.endswith(">>> ") else way
-
-            module_name = inspect.getmodule(func).__name__
-            qname = func.__qualname__
-            module_class_function = (module_name + "." + qname).center(len(str(module_name + "." + qname)) + 6, ' ').center(200, '*')
-
-            extra = {"position": "start", "module_class_function": module_class_function, "line": 42,
-                    "calling_depth": calling_depth, "way": way, "arguments": bound.arguments, "placeholder": ""}
-
-            adapt_logger = DebugVerboseAdapter(self.logger, extra)
-            adapt_logger.send_log(f"arguments: {bound.arguments}")
-
-            start = datetime.now()
-            return_val = func(self, *args, **kwargs)
-            end = datetime.now()
-
-            extra = {"position":"end", "return_val":return_val, "elapsed":end - start, "placeholder": ""}
-
-            adapt_logger = DebugVerboseAdapter(self.logger, extra)
-            adapt_logger.send_log(f"return {return_val}")
-        else:
-            return_val = func(self, *args, **kwargs)
-
-        return return_val
-
-    return debug_wrapper

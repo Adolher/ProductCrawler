@@ -4,13 +4,12 @@ Created on Sat Mar 11 12:14:47 2023
 
 @author: jpw
 """
-import logging
 
 from source.ProxyRotator import ProxyRotator
 from source.DefaultLogger import initialize_logger
 
 initialize_logger()
-logger = logging.getLogger(__name__)
+
 
 sites = [
     "http://books.toscrape.com/catalogue/category/books_1/index.html",
